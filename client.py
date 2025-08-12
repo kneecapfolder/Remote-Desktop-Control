@@ -1,5 +1,7 @@
 import socket
 import threading
+import keyboard
+import win32api
 
 HOST = socket.gethostbyname(socket.gethostname())
 PORT = 8080
@@ -17,8 +19,22 @@ def print_key(event):
 
 def process_input(sock : socket.socket):
     while True:
-        msg = sock.recv(1024).decode()
-        print(msg)
+        command = sock.recv(1024).decode()
+        command = command.split()
+
+        match command[0]:
+            case 'KEY':
+                keyboard.press_and_release(command[1])
+
+            case 'MOUSE_MOVE':
+                win32api.SetCursorPos( (int(command[1]), int(command[2])) )
+            
+            case 'MOUSE_CLICK':
+                win32api.mouse_event(int(command[1]), 0, 0, 0, 0)
+
+                    
+
+        print(command)
 
 def send_screen():
     pass
