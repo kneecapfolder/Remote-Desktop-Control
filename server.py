@@ -4,6 +4,10 @@ import keyboard
 import win32api
 import win32con
 from time import sleep
+from PIL import ImageGrab, Image, ImageTk
+import struct
+import io
+import GUI
 
 HOST = socket.gethostbyname(socket.gethostname())
 PORT = 8080
@@ -42,16 +46,19 @@ def send_mouse_input(sock : socket.socket):
         
         # Detect mouse movement
         if x != prev_x or y != prev_y:
-            sock.sendall(f'MOUSE_MOVE {x} {y} '.encode())
+            root_x, root_y = app.get_root_cordinates()
+            sock.sendall(f'MOUSE_MOVE {x - root_x} {y - root_y} '.encode())
             prev_x, prev_y = x, y
 
         # Left
         if win32api.GetAsyncKeyState(1) & 0x8000:
-            left = True
-            sock.sendall(f'MOUSE_CLICK {win32con.MOUSEEVENTF_LEFTDOWN} '.encode())
+            if not left:
+                left = True
+                sock.sendall(f'MOUSE_CLICK {win32con.MOUSEEVENTF_LEFTDOWN} '.encode())
         elif left:
-            left = False
-            sock.sendall(f'MOUSE_CLICK {win32con.MOUSEEVENTF_LEFTUP} '.encode())
+            if not right:
+                left = False
+                sock.sendall(f'MOUSE_CLICK {win32con.MOUSEEVENTF_LEFTUP} '.encode())
 
         # Right
         if win32api.GetAsyncKeyState(2) & 0x8000:
@@ -65,10 +72,37 @@ def send_mouse_input(sock : socket.socket):
 
 
 # Handle stream
-def process_screen(sock : socket.socket):
+def process_screen(server : socket.socket):
+    recived_packets = {}
     while True:
-        pass
-        # TODO: get the screenshots and pass them to a GUI
+        packet, addr = server.recvfrom(2048)
+        curr_frame = -1
+
+        # Get header (8 bytes -> 2 integers)
+        frame_id, syn, total_packets = struct.unpack('!III', packet[:12]) # Get header
+        data = packet[12:] # Get data
+
+        recived_packets[syn] = data
+
+        if curr_frame == -1:
+            curr_frame = frame_id
+        elif curr_frame != frame_id:
+            curr_frame = frame_id
+            recived_packets.clear()
+
+        if len(recived_packets) == total_packets:
+            curr_frame = -1
+            img_data = b''
+
+            # Add all packets in order
+            for i in range(total_packets):
+                img_data += recived_packets[i]
+
+            recived_packets.clear()
+
+            img = Image.open(io.BytesIO(img_data))
+            app.update_screen(ImageTk.PhotoImage(img.resize((1920, 1080), Image.LANCZOS)))
+            
 
 input_server  = create_server(socket.SOCK_STREAM) # TCP
 screen_server = create_server(socket.SOCK_DGRAM)  # UDP
@@ -76,19 +110,11 @@ screen_server = create_server(socket.SOCK_DGRAM)  # UDP
 input_server.listen(5)
 
 threading.Thread(target=send_input, args=(input_server,)).start()
-# threading.Thread(screen_server(screen_server, process_screen)).start()
+threading.Thread(target=process_screen, args=(screen_server,)).start()
+
+app = GUI.AppInterface()
 
 
-# prev_x, prev_y = win32api.GetCursorPos()
-# while True:
-#     x, y = win32api.GetCursorPos()
-    
-#     # Detect mouse movement
-#     if x != prev_x or y != prev_y:
-#         # sock.sendall(f'MOUSE_MOVE {x} {y} '.encode())
-#         prev_x, prev_y = x, y
-
-#     if win32api.GetAsyncKeyState(1) & 0x8000:
-#         print('right key pressed')
-
-#     sleep(0.01)
+app.start()
+input_server.close()
+screen_server.close()
