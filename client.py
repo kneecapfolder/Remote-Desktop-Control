@@ -6,6 +6,7 @@ from time import sleep
 from PIL import ImageGrab
 import io
 import struct
+import tkinter
 
 HOST = socket.gethostbyname(socket.gethostname())
 PORT = 8080
@@ -14,6 +15,17 @@ def create_socket(protocol) -> socket.socket:
     sock = socket.socket(socket.AF_INET, protocol)
     sock.connect( (HOST, PORT) )
     return sock
+
+def send_settings():
+    sock = create_socket(socket.SOCK_STREAM)
+    
+    root = tkinter.Tk()
+    data = struct.pack('!II', root.winfo_screenwidth(), root.winfo_screenheight())
+    root.destroy()
+    
+    sock.send(data)
+
+    sock.close()
 
 def process_input(sock : socket.socket):
     while True:
@@ -55,10 +67,10 @@ def send_screen(sock : socket.socket):
         frame_id += 1
 
         sleep(0.01)
-
     
 
 server_address = (HOST, PORT)
+send_settings()
 input_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # TCP
 screen_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
 

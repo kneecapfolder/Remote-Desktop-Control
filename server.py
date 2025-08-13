@@ -17,14 +17,24 @@ def create_server(protocol) -> socket.socket:
     server.bind( (HOST, PORT) )
     return server
 
+def get_settings():
+    settings_server = create_server(socket.SOCK_STREAM)
+    settings_server.listen(1)
+    sock, _ = settings_server.accept()
+
+    settings = sock.recv(8)
+    width, height = struct.unpack('!II', settings)
+
+    sock.close()
+    settings_server.close()
+
+    return width, height
+
+
 def send_input(server : socket.socket):
     sock, _ = server.accept()
     threading.Thread(target=send_keyboard_input, args=(sock,)).start()
     threading.Thread(target=send_mouse_input, args=(sock,)).start()
-
-# def run_server(server : socket.socket, running_fn: callable):
-#     sock, _ = server.accept()
-#     running_fn(sock)
 
 # Handle keyboard
 def keyboard_click(sock : socket.socket, event):
@@ -47,7 +57,9 @@ def send_mouse_input(sock : socket.socket):
         # Detect mouse movement
         if x != prev_x or y != prev_y:
             root_x, root_y = app.get_root_cordinates()
-            sock.sendall(f'MOUSE_MOVE {x - root_x} {y - root_y} '.encode())
+            target_x, target_y = app_to_screen_cords(x - root_x, y - root_y)
+            
+            sock.sendall(f'MOUSE_MOVE {int(target_x)} {int(target_y)} '.encode())
             prev_x, prev_y = x, y
 
         # Left
@@ -101,8 +113,17 @@ def process_screen(server : socket.socket):
             recived_packets.clear()
 
             img = Image.open(io.BytesIO(img_data))
-            app.update_screen(ImageTk.PhotoImage(img.resize((1920, 1080), Image.LANCZOS)))
+            app.update_screen(ImageTk.PhotoImage(img.resize((1280, 720), Image.LANCZOS)))
             
+
+# Translates the mouse position reletive to the app to the correct position on the client's screen
+app_width = 1280
+app_height = 720
+screen_width, screen_height = get_settings()
+def app_to_screen_cords(x, y):
+    target_x = x / app_width * screen_width
+    target_y = y / app_height * screen_height
+    return target_x, target_y
 
 input_server  = create_server(socket.SOCK_STREAM) # TCP
 screen_server = create_server(socket.SOCK_DGRAM)  # UDP
@@ -112,9 +133,7 @@ input_server.listen(5)
 threading.Thread(target=send_input, args=(input_server,)).start()
 threading.Thread(target=process_screen, args=(screen_server,)).start()
 
-app = GUI.AppInterface()
-
-
+app = GUI.AppInterface(app_width, app_height)
 app.start()
 input_server.close()
 screen_server.close()
