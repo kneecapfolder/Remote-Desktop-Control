@@ -5,6 +5,8 @@ class AppInterface:
     def __init__(self, width, height):
         self.root = tk.CTk()
         self.root.geometry(f'{width}x{height}')
+        self.root.title('Remote Desktop Control')
+        self.root.resizable(False, False)
         
         self.screen = tk.CTkLabel(self.root, text='', width=width, height=height)
         self.screen.pack()
