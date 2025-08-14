@@ -22,4 +22,8 @@ class AppInterface:
     def start(self):
         # Run app
         self.root.mainloop()
+
+    def stop(self):
+        # Stop app
+        self.root.destroy()
         

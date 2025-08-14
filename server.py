@@ -16,7 +16,6 @@ app_width = 1280
 app_height = 720
 app = GUI.AppInterface(app_width, app_height)
 
-stop_threads = threading.Event()
 
 def create_server(protocol) -> socket.socket:
     server = socket.socket(socket.AF_INET, protocol)
@@ -39,12 +38,15 @@ def get_settings():
 
 def send_input(server : socket.socket):
     sock, _ = server.accept()
-    threading.Thread(target=send_keyboard_input, args=(sock,)).start()
-    threading.Thread(target=send_mouse_input, args=(sock,)).start()
+    threading.Thread(target=send_keyboard_input, args=(sock,), daemon=True).start()
+    threading.Thread(target=send_mouse_input, args=(sock,), daemon=True).start()
 
 # Handle keyboard
 def keyboard_click(sock : socket.socket, event):
-    sock.sendall(f'KEY {event.name}|'.encode())
+    try:
+        sock.sendall(f'KEY {event.name}|'.encode())
+    except:
+        keyboard.unhook_all()
 
 def send_keyboard_input(sock : socket.socket):
     keyboard.on_press(callback=lambda event: keyboard_click(sock, event))
@@ -58,7 +60,7 @@ def send_mouse_input(sock : socket.socket):
     right = False
     middle = False
 
-    while not stop_threads.is_set():
+    while True:
         try:
             x, y = win32api.GetCursorPos()
             
@@ -99,54 +101,50 @@ def send_mouse_input(sock : socket.socket):
             sleep(0.01)
         except:
             # Connection terminated
-            stop_threads.set()
-            screen_server.close()
+            app.stop()
 
-    sock.close()
+    
+
+
 
 
 # Handle stream
 def process_screen(server : socket.socket):
     recived_packets = {}
-    while not stop_threads.is_set():
-        try:
-            packet, _ = server.recvfrom(1048)
+    while True:
+        packet, _ = server.recvfrom(1048)
+        curr_frame = -1
+
+        # Get header (8 bytes -> 2 integers)
+        frame_id, syn, total_packets = struct.unpack('!III', packet[:12]) # Get header
+        data = packet[12:] # Get data
+
+        if curr_frame == -1:
+            curr_frame = frame_id
+        elif curr_frame != frame_id:
+            curr_frame = frame_id
+            recived_packets.clear()
+            continue
+
+        recived_packets[syn] = data
+
+        if len(recived_packets) == total_packets:
+            try:
+                img_data = b''
+
+                # Add all packets in order
+                for i in range(total_packets):
+                    img_data += recived_packets[i]
+
+                img = Image.open(io.BytesIO(img_data)).resize((1280, 720), Image.LANCZOS)
+                threading.Thread(target=app.update_screen, args=(ImageTk.PhotoImage(img),)).start()
+                img.close()
+            except:
+                # Packet lost
+                pass
+            
             curr_frame = -1
-
-            # Get header (8 bytes -> 2 integers)
-            frame_id, syn, total_packets = struct.unpack('!III', packet[:12]) # Get header
-            data = packet[12:] # Get data
-
-            if curr_frame == -1:
-                curr_frame = frame_id
-            elif curr_frame != frame_id:
-                curr_frame = frame_id
-                recived_packets.clear()
-                continue
-
-            recived_packets[syn] = data
-
-            if len(recived_packets) == total_packets:
-                try:
-                    img_data = b''
-
-                    # Add all packets in order
-                    for i in range(total_packets):
-                        img_data += recived_packets[i]
-
-                    img = Image.open(io.BytesIO(img_data)).resize((1280, 720), Image.LANCZOS)
-                    threading.Thread(target=app.update_screen, args=(ImageTk.PhotoImage(img),)).start()
-                    img.close()
-                except:
-                    # Packet lost
-                    pass
-                
-                curr_frame = -1
-                recived_packets.clear()
-        except:
-            # Connection terminated
-            stop_threads.set()
-            input_server.close()
+            recived_packets.clear()
 
             
 
@@ -163,16 +161,10 @@ screen_server = create_server(socket.SOCK_DGRAM)  # UDP
 
 input_server.listen(5)
 
-input_thread = threading.Thread(target=send_input, args=(input_server,))
-screen_thread = threading.Thread(target=process_screen, args=(screen_server,))
+input_thread = threading.Thread(target=send_input, args=(input_server,), daemon=True)
+screen_thread = threading.Thread(target=process_screen, args=(screen_server,), daemon=True)
 
 input_thread.start()
 screen_thread.start()
 
 app.start()
-
-input_thread.join()
-screen_thread.join()
-
-input_server.close()
-screen_server.close()
