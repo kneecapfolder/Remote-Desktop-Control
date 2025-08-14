@@ -10,7 +10,7 @@ import numpy
 import io
 import struct
 
-HOST = '192.168.1.230'
+HOST = '' # target ip
 PORT = 8080
 stop_threads = threading.Event()
 
@@ -114,7 +114,3 @@ input_sock.connect( (HOST, PORT) )
 
 threading.Thread(target=process_input, args=(input_sock,)).start()
 threading.Thread(target=send_screen, args=(screen_sock,)).start()
-
-# input_sock.close()
-# screen_sock.close()
-
