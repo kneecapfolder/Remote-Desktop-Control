@@ -16,6 +16,7 @@ stop_threads = threading.Event()
 
 def create_socket(protocol) -> socket.socket:
     sock = socket.socket(socket.AF_INET, protocol)
+    sock.settimeout(5)
     sock.connect( (HOST, PORT) )
     return sock
 

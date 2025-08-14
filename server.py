@@ -168,3 +168,6 @@ input_thread.start()
 screen_thread.start()
 
 app.start()
+
+input_server.close()
+screen_server.close()
